@@ -181,7 +181,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         this.attachSessionHandler(session.serviceMessage$, msg => {
             session.registerBootstrapMetadata(msg)
             msg = msg.replace(/\n/g, '\r\n      ')
-            this.write(`\r${colors.black.bgWhite(' MOSH ')} ${msg}\r\n`)
+            this.write(`\r${colors.black.bgWhite(' SSH ')} ${msg}\r\n`)
             session.resize(this.size.columns, this.size.rows)
         })
 
@@ -193,8 +193,15 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         await super.initializeSession()
         try {
             if (this.profile.options.transport === 'mosh') {
-                await this.initializeMoshSession()
-                return
+                try {
+                    await this.initializeMoshSession()
+                    return
+                } catch (e) {
+                    if (!this.profile.options.mosh.fallbackToSSH) {
+                        throw e
+                    }
+                    this.write(`\r${colors.black.bgWhite(' SSH ')} ${this.translate.instant(_('Mosh failed, falling back to SSH'))}\r\n`)
+                }
             }
 
             await this.initializeSSHSessionMaybeMultiplex(true)

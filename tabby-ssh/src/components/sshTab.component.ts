@@ -10,6 +10,7 @@ import { KeyboardInteractivePrompt, SSHSession } from '../session/ssh'
 import { SSHPortForwardingModalComponent } from './sshPortForwardingModal.component'
 import { SSHProfile } from '../api'
 import { SSHShellSession } from '../session/shell'
+import { MoshSession } from '../session/mosh'
 import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
 
 /** @hidden */
@@ -25,7 +26,7 @@ import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
 export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile> {
     Platform = Platform
     sshSession: SSHSession|null = null
-    session: SSHShellSession|null = null
+    session: SSHShellSession|MoshSession|null = null
     sftpPanelVisible = false
     sftpPath = '/'
     enableToolbar = true
@@ -155,7 +156,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         }
     }
 
-    private async initializeSessionMaybeMultiplex (multiplex = true): Promise<void> {
+    private async initializeSSHSessionMaybeMultiplex (multiplex = true): Promise<void> {
         this.sshSession = await this.setupOneSession(this.injector, this.profile, multiplex)
         const session = new SSHShellSession(this.injector, this.sshSession, this.profile)
 
@@ -171,13 +172,35 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         this.session?.resize(this.size.columns, this.size.rows)
     }
 
+    private async initializeMoshSession (): Promise<void> {
+        // Mosh reuses SSH only for bootstrap/negotiation.
+        this.sshSession = await this.setupOneSession(this.injector, this.profile, false)
+        const session = new MoshSession(this.injector, this.sshSession, this.profile)
+
+        this.setSession(session)
+        this.attachSessionHandler(session.serviceMessage$, msg => {
+            session.registerBootstrapMetadata(msg)
+            msg = msg.replace(/\n/g, '\r\n      ')
+            this.write(`\r${colors.black.bgWhite(' MOSH ')} ${msg}\r\n`)
+            session.resize(this.size.columns, this.size.rows)
+        })
+
+        await session.start()
+        this.session?.resize(this.size.columns, this.size.rows)
+    }
+
     async initializeSession (): Promise<void> {
         await super.initializeSession()
         try {
-            await this.initializeSessionMaybeMultiplex(true)
+            if (this.profile.options.transport === 'mosh') {
+                await this.initializeMoshSession()
+                return
+            }
+
+            await this.initializeSSHSessionMaybeMultiplex(true)
         } catch {
             try {
-                await this.initializeSessionMaybeMultiplex(false)
+                await this.initializeSSHSessionMaybeMultiplex(false)
             } catch (e) {
                 console.error('SSH session initialization failed', e)
                 this.write(colors.black.bgRed(' X ') + ' ' + colors.red(e.message) + '\r\n')

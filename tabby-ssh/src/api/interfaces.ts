@@ -14,6 +14,7 @@ export interface SSHProfile extends ConnectableTerminalProfile {
 }
 
 export interface SSHProfileOptions extends LoginScriptsOptions {
+    transport: 'ssh' | 'mosh'
     host: string
     port?: number
     user: string
@@ -37,6 +38,16 @@ export interface SSHProfileOptions extends LoginScriptsOptions {
     httpProxyPort: number | null
     reuseSession: boolean
     input: InputProcessingOptions,
+    mosh: SSHMoshOptions
+}
+
+export interface SSHMoshOptions {
+    serverCommand: string
+    port: number | null
+    portRange: string | null
+    predict: string
+    escapeKey: string
+    fallbackToSSH: boolean
 }
 
 export enum PortForwardType {

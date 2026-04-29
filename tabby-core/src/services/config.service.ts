@@ -21,6 +21,15 @@ export const configMergeByDefault = (a, b) => deepmerge(a, b) // eslint-disable-
 
 const LATEST_VERSION = 1
 
+const DEFAULT_SSH_MOSH_OPTIONS = {
+    serverCommand: 'mosh-server',
+    port: null,
+    portRange: null,
+    predict: 'adaptive',
+    escapeKey: 'Ctrl+^',
+    fallbackToSSH: true,
+}
+
 function isStructuralMember (v): v is AnyRec {
     return v instanceof Object && !(v instanceof Array) &&
         Object.keys(v).length > 0 && !v.__nonStructural
@@ -313,6 +322,14 @@ export class ConfigService {
 
     // eslint-disable-next-line max-statements
     private migrate (config) {
+        const ensureSSHTransportDefaults = (options) => {
+            if (!options) {
+                return
+            }
+            options.transport ??= 'ssh'
+            options.mosh = Object.assign({}, DEFAULT_SSH_MOSH_OPTIONS, options.mosh ?? {})
+        }
+
         config.version ??= 0
         if (config.version < 1) {
             for (const connection of config.ssh?.connections ?? []) {
@@ -451,6 +468,15 @@ export class ConfigService {
                 }
             }
             config.version = 8
+        }
+        if (config.version < 9) {
+            ensureSSHTransportDefaults(config.profileDefaults?.ssh?.options)
+            for (const p of config.profiles ?? []) {
+                if (p.type === 'ssh') {
+                    ensureSSHTransportDefaults(p.options)
+                }
+            }
+            config.version = 9
         }
     }
 

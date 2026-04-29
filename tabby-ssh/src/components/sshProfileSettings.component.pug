@@ -14,6 +14,11 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
                             translate
                         ) Direct
                         button.dropdown-item(
+                            (click)='connectionMode = "mosh"',
+                        )
+                            div Mosh (SSH + UDP)
+                            .text-muted(translate) Mobile Shell transport over UDP with roaming support
+                        button.dropdown-item(
                             *ngIf='hostApp.platform !== Platform.Web',
                             (click)='connectionMode = "proxyCommand"',
                         )
@@ -42,9 +47,9 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
                         [(ngModel)]='profile.options.proxyCommand',
                     )
 
-                .mb-3.w-100.me-2(*ngIf='connectionMode !== "proxyCommand"')
-                    label(translate) Host
-                    input.form-control(
+            .mb-3.w-100.me-2(*ngIf='connectionMode !== "proxyCommand"')
+                label(translate) Host
+                input.form-control(
                         type='text',
                         [(ngModel)]='profile.options.host',
                     )
@@ -54,14 +59,63 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
                     input.form-control(
                         type='number',
                         placeholder='22',
-                        [(ngModel)]='profile.options.port',
+                    [(ngModel)]='profile.options.port',
                     )
+                .form-text.text-warning(*ngIf='connectionMode === "mosh"') SSH still establishes the initial handshake, so host is required.
 
             .mb-3(*ngIf='connectionMode === "jumpHost"')
                 label(translate) Jump host
                 select.form-control([(ngModel)]='profile.options.jumpHost')
                     option([ngValue]='null', translate) Select
                     option([ngValue]='x.id', *ngFor='let x of jumpHosts') {{getJumpHostLabel(x)}}
+
+            .card.mb-3(*ngIf='connectionMode === "mosh"')
+                .card-body
+                    h5.card-title Mosh
+                    p.text-muted.mb-3(translate) Mosh requires mosh-server on the remote host and open UDP firewall rules.
+                    .mb-3
+                        label(translate) Mosh server command
+                        input.form-control(
+                            type='text',
+                            placeholder='mosh-server',
+                            [(ngModel)]='profile.options.mosh.serverCommand',
+                        )
+                        .form-text(translate) Override only if mosh-server is in a custom path or wrapped by another command.
+                    .d-flex.w-100
+                        .mb-3.w-100.me-2
+                            label(translate) UDP port
+                            input.form-control(
+                                type='number',
+                                placeholder='Auto',
+                                [(ngModel)]='profile.options.mosh.port',
+                            )
+                        .mb-3.w-100
+                            label(translate) UDP port range
+                            input.form-control(
+                                type='text',
+                                placeholder='60000:61000',
+                                [(ngModel)]='profile.options.mosh.portRange',
+                            )
+                    .form-text.text-warning.mb-3(translate) Set either a single UDP port or a range, and make sure your firewall allows it.
+                    .mb-3
+                        label(translate) Prediction mode
+                        select.form-control([(ngModel)]='profile.options.mosh.predict')
+                            option(value='adaptive') adaptive
+                            option(value='always') always
+                            option(value='never') never
+                    .mb-3
+                        label(translate) Escape key
+                        input.form-control(
+                            type='text',
+                            placeholder='Ctrl+^',
+                            [(ngModel)]='profile.options.mosh.escapeKey',
+                        )
+                        .form-text(translate) Optional key sequence to drop back to local control in Mosh.
+                    .form-line
+                        .header
+                            .title(translate) Fallback to SSH if Mosh fails
+                            .description(translate) Useful when UDP or mosh-server is unavailable.
+                        toggle([(ngModel)]='profile.options.mosh.fallbackToSSH')
 
 
             .d-flex.w-100(*ngIf='connectionMode === "socksProxy"')

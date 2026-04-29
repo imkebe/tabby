@@ -20,7 +20,7 @@ export class SSHProfileSettingsComponent implements ProfileSettingsComponent<SSH
     profile: ProxifiedConfig<FullyDefined<SSHProfile>>
     hasSavedPassword: boolean
 
-    connectionMode: 'direct'|'proxyCommand'|'jumpHost'|'socksProxy'|'httpProxy' = 'direct'
+    connectionMode: 'direct'|'mosh'|'proxyCommand'|'jumpHost'|'socksProxy'|'httpProxy' = 'direct'
 
     supportedAlgorithms = supportedAlgorithms
     algorithms: Record<string, Record<string, boolean>> = {}
@@ -46,7 +46,9 @@ export class SSHProfileSettingsComponent implements ProfileSettingsComponent<SSH
             }
         }
 
-        if (this.profile.options.proxyCommand) {
+        if (this.profile.options.transport === 'mosh') {
+            this.connectionMode = 'mosh'
+        } else if (this.profile.options.proxyCommand) {
             this.connectionMode = 'proxyCommand'
         } else if (this.profile.options.jumpHost) {
             this.connectionMode = 'jumpHost'
@@ -123,6 +125,22 @@ export class SSHProfileSettingsComponent implements ProfileSettingsComponent<SSH
             this.profile.options.httpProxyHost = null
             this.profile.options.httpProxyPort = null
         }
+        if (this.connectionMode !== 'mosh') {
+            this.profile.options.transport = 'ssh'
+            this.profile.options.mosh.serverCommand = 'mosh-server'
+            this.profile.options.mosh.port = null
+            this.profile.options.mosh.portRange = null
+            this.profile.options.mosh.predict = 'adaptive'
+            this.profile.options.mosh.fallbackToSSH = true
+        } else {
+            this.profile.options.transport = 'mosh'
+            this.profile.options.proxyCommand = null
+            this.profile.options.jumpHost = null
+            this.profile.options.socksProxyHost = null
+            this.profile.options.socksProxyPort = null
+            this.profile.options.httpProxyHost = null
+            this.profile.options.httpProxyPort = null
+        }
 
         this.loginScriptsSettings?.save()
     }
@@ -138,6 +156,7 @@ export class SSHProfileSettingsComponent implements ProfileSettingsComponent<SSH
     getConnectionDropdownTitle () {
         return {
             direct: 'Direct',
+            mosh: 'Mosh',
             proxyCommand: 'Proxy command',
             jumpHost: 'Jump host',
             socksProxy: 'SOCKS proxy',

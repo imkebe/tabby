@@ -14,6 +14,7 @@ export class SSHProfilesService extends QuickConnectProfileProvider<SSHProfile> 
     settingsComponent = SSHProfileSettingsComponent
     configDefaults = {
         options: {
+            transport: 'ssh' as const,
             host: '',
             port: 22,
             user: 'root',
@@ -44,6 +45,14 @@ export class SSHProfilesService extends QuickConnectProfileProvider<SSHProfile> 
             httpProxyPort: null,
             reuseSession: true,
             input: { backspace: 'backspace' },
+            mosh: {
+                serverCommand: 'mosh-server',
+                port: null,
+                portRange: null,
+                predict: 'adaptive',
+                escapeKey: 'Ctrl+^',
+                fallbackToSSH: true,
+            },
         },
         clearServiceMessagesOnConnect: true,
     }

@@ -2,7 +2,7 @@ import { Injector } from '@angular/core'
 import { Observable, Subject } from 'rxjs'
 import stripAnsi from 'strip-ansi'
 import dgram, { Socket as DgramSocket } from 'dgram'
-import { LogService } from 'tabby-core'
+import { LogService, ProfilesService } from 'tabby-core'
 import { BaseSession, InputProcessor, UTF8SplitterMiddleware } from 'tabby-terminal'
 import { SSHProfile } from '../api'
 import { SSHSession } from './ssh'
@@ -26,18 +26,17 @@ export class SSHMoshSession extends BaseSession {
     private serviceMessage = new Subject<string>()
     private ssh: SSHSession|null
     private bootstrapData?: MoshBootstrapData
-    private remoteHost: string
+    private remoteHost = ''
 
     get serviceMessage$ (): Observable<string> { return this.serviceMessage }
 
     constructor (
-        injector: Injector,
+        private injector: Injector,
         ssh: SSHSession,
         private profile: SSHProfile,
     ) {
         super(injector.get(LogService).create(`ssh-mosh-${profile.options.host}-${profile.options.port}`))
         this.ssh = ssh
-        this.remoteHost = this.profile.options.jumpHost ?? this.profile.options.host
         this.ssh.serviceMessage$.subscribe(m => this.emitServiceMessage(m))
         this.middleware.push(new UTF8SplitterMiddleware())
         this.middleware.push(new InputProcessor(profile.options.input))
@@ -52,8 +51,31 @@ export class SSHMoshSession extends BaseSession {
         this.ssh.willDestroy$.subscribe(() => this.destroy())
 
         this.bootstrapData = await this.bootstrapMoshServer()
+        this.remoteHost = await this.resolveRemoteHost()
         this.open = true
         this.createUDPSocket()
+    }
+
+    private async resolveRemoteHost (): Promise<string> {
+        /**
+         * Mosh topology:
+         *  - SSH is used only for bootstrap (`mosh-server new`) and can be tunneled via a jump profile.
+         *  - After bootstrap, Mosh traffic is raw UDP and is not forwarded through the SSH tunnel.
+         * Therefore UDP must target the final destination host from the active profile, not the jump host.
+         */
+        if (!this.profile.options.jumpHost) {
+            return this.profile.options.host
+        }
+
+        const profiles = await this.injector.get(ProfilesService).getProfiles()
+        const jumpProfile = profiles.find(x => x.id === this.profile.options.jumpHost)
+        if (!jumpProfile) {
+            this.emitServiceMessage(`Mosh settings: jump host profile "${this.profile.options.jumpHost}" not found; UDP will still target destination host ${this.profile.options.host}.`)
+            return this.profile.options.host
+        }
+
+        this.emitServiceMessage(`Mosh settings: SSH bootstrap is tunneled via jump host ${jumpProfile.name ?? jumpProfile.options.host}, but UDP transport targets destination host ${this.profile.options.host}. Ensure direct UDP reachability from client to destination.`)
+        return this.profile.options.host
     }
 
     private async bootstrapMoshServer (): Promise<MoshBootstrapData> {

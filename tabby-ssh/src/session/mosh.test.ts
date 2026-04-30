@@ -86,3 +86,32 @@ test('rejects malformed port ranges', () => {
     assert.equal(result, null)
     assert.match(messages[0], /invalid port range/i)
 })
+
+test('resolves UDP endpoint to destination host in direct mode', async () => {
+    const host = await (SSHMoshSession.prototype as any).resolveRemoteHost.call({
+        profile: { options: { host: 'dest.example', jumpHost: null } },
+    })
+
+    assert.equal(host, 'dest.example')
+})
+
+test('resolves UDP endpoint to destination host when jump host is configured', async () => {
+    const serviceMessages: string[] = []
+    const host = await (SSHMoshSession.prototype as any).resolveRemoteHost.call({
+        profile: { options: { host: 'dest.example', jumpHost: 'jump-profile' } },
+        injector: {
+            get: () => ({
+                getProfiles: async () => [{
+                    id: 'jump-profile',
+                    name: 'Jump Profile',
+                    options: { host: 'jump.example' },
+                }],
+            }),
+        },
+        emitServiceMessage: (message: string) => serviceMessages.push(message),
+    })
+
+    assert.equal(host, 'dest.example')
+    assert.match(serviceMessages[0], /bootstrap is tunneled via jump host/i)
+    assert.match(serviceMessages[0], /udp transport targets destination host dest\.example/i)
+})

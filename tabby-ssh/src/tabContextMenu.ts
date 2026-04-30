@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core'
 import { BaseTabComponent, TabContextMenuItemProvider, HostAppService, Platform, MenuItemOptions, TranslateService } from 'tabby-core'
 import { SSHTabComponent } from './components/sshTab.component'
 import { SSHService } from './services/ssh.service'
+import { getSSHTransportCapabilities } from './api'
 
 
 /** @hidden */
@@ -21,14 +22,14 @@ export class SFTPContextMenu extends TabContextMenuItemProvider {
         if (!(tab instanceof SSHTabComponent)) {
             return []
         }
-        const supportsAuxiliarySSHFeatures = tab.profile.options.transport !== 'mosh'
-        const items = supportsAuxiliarySSHFeatures ? [{
+        const capabilities = getSSHTransportCapabilities(tab.profile)
+        const items = capabilities.sftp ? [{
             label: this.translate.instant('Open SFTP panel'),
             click: () => {
                 tab.openSFTP()
             },
         }] : []
-        if (supportsAuxiliarySSHFeatures && this.hostApp.platform === Platform.Windows && this.ssh.getWinSCPPath()) {
+        if (capabilities.winSCP && this.hostApp.platform === Platform.Windows && this.ssh.getWinSCPPath()) {
             items.push({
                 label: this.translate.instant('Launch WinSCP'),
                 click: (): void => {

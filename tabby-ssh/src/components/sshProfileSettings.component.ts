@@ -6,7 +6,7 @@ import { firstBy } from 'thenby'
 import { FileProvidersService, Platform, HostAppService, PromptModalComponent, PartialProfile, ProfilesService, ProfileSettingsComponent } from 'tabby-core'
 import { LoginScriptsSettingsComponent } from 'tabby-terminal'
 import { PasswordStorageService } from '../services/passwordStorage.service'
-import { ForwardedPortConfig, SSHAlgorithmType, SSHProfile } from '../api'
+import { ForwardedPortConfig, SSHAlgorithmType, SSHProfile, getSSHTransportCapabilities } from '../api'
 import { supportedAlgorithms } from '../algorithms'
 import { FullyDefined, ProxifiedConfig } from 'tabby-core/src/services/config.service'
 import { SSHProfilesService } from '../profiles'
@@ -153,6 +153,10 @@ export class SSHProfileSettingsComponent implements ProfileSettingsComponent<SSH
         this.profile.options.forwardedPorts = this.profile.options.forwardedPorts.filter(x => x !== fw)
     }
 
+
+    get transportCapabilities () {
+        return getSSHTransportCapabilities({ options: { transport: this.connectionMode === 'mosh' ? 'mosh' : 'ssh' } } as any)
+    }
     getConnectionDropdownTitle () {
         return {
             direct: 'Direct',

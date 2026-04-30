@@ -45,6 +45,14 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         })
     }
 
+    private transportSupportsAuxiliarySSHFeatures (): boolean {
+        return this.profile.options.transport !== 'mosh'
+    }
+
+    private showUnsupportedFeatureMessage (feature: string): void {
+        this.write(`\r${colors.black.bgWhite(' SSH ')} ${feature} is only available in SSH transport mode\r\n`)
+    }
+
     ngOnInit (): void {
         this.subscribeUntilDestroyed(this.hotkeys.hotkey$, hotkey => {
             if (!this.hasFocus) {
@@ -61,6 +69,10 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
                     this.reconnect()
                     break
                 case 'launch-winscp':
+                    if (!this.transportSupportsAuxiliarySSHFeatures()) {
+                        this.showUnsupportedFeatureMessage('WinSCP launch')
+                        break
+                    }
                     if (this.sshSession) {
                         this.ssh.launchWinSCP(this.sshSession)
                     }
@@ -190,6 +202,11 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     showPortForwarding (): void {
+        if (!this.transportSupportsAuxiliarySSHFeatures()) {
+            this.showUnsupportedFeatureMessage('Port forwarding controls')
+            return
+        }
+
         const modal = this.ngbModal.open(SSHPortForwardingModalComponent).componentInstance as SSHPortForwardingModalComponent
         modal.session = this.sshSession!
     }
@@ -216,10 +233,19 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     async openSFTP (): Promise<void> {
+        if (!this.transportSupportsAuxiliarySSHFeatures()) {
+            this.showUnsupportedFeatureMessage('SFTP')
+            return
+        }
+
         this.sftpPath = await this.session?.getWorkingDirectory() ?? this.sftpPath
         setTimeout(() => {
             this.sftpPanelVisible = true
         }, 100)
+    }
+
+    get supportsSFTPAndPortForwarding (): boolean {
+        return this.transportSupportsAuxiliarySSHFeatures()
     }
 
     @HostListener('click')

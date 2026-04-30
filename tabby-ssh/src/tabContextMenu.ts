@@ -21,13 +21,14 @@ export class SFTPContextMenu extends TabContextMenuItemProvider {
         if (!(tab instanceof SSHTabComponent)) {
             return []
         }
-        const items = [{
+        const supportsAuxiliarySSHFeatures = tab.profile.options.transport !== 'mosh'
+        const items = supportsAuxiliarySSHFeatures ? [{
             label: this.translate.instant('Open SFTP panel'),
             click: () => {
                 tab.openSFTP()
             },
-        }]
-        if (this.hostApp.platform === Platform.Windows && this.ssh.getWinSCPPath()) {
+        }] : []
+        if (supportsAuxiliarySSHFeatures && this.hostApp.platform === Platform.Windows && this.ssh.getWinSCPPath()) {
             items.push({
                 label: this.translate.instant('Launch WinSCP'),
                 click: (): void => {

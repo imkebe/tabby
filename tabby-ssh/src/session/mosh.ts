@@ -32,7 +32,7 @@ export class SSHMoshSession extends BaseSession {
     ) {
         super(injector.get(LogService).create(`ssh-mosh-${profile.options.host}-${profile.options.port}`))
         this.ssh = ssh
-        this.remoteHost = this.profile.options.jumpHost || this.profile.options.host
+        this.remoteHost = this.profile.options.jumpHost ?? this.profile.options.host
         this.ssh.serviceMessage$.subscribe(m => this.emitServiceMessage(m))
         this.middleware.push(new UTF8SplitterMiddleware())
         this.middleware.push(new InputProcessor(profile.options.input))
@@ -117,6 +117,7 @@ export class SSHMoshSession extends BaseSession {
         this.udpSocket.on('message', message => this.emitOutput(message))
         this.udpSocket.connect(this.bootstrapData.port, this.remoteHost, () => {
             this.emitServiceMessage(`Connected UDP transport to ${this.remoteHost}:${this.bootstrapData!.port}`)
+            this.emitServiceMessage('SSH bootstrap succeeded; handing control over to Mosh UDP transport')
         })
     }
 

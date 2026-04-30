@@ -1,7 +1,7 @@
 import { Injector } from '@angular/core'
 import { Observable, Subject } from 'rxjs'
 import stripAnsi from 'strip-ansi'
-import dgram, { Socket as DgramSocket } from 'dgram'
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process'
 import { LogService, ProfilesService } from 'tabby-core'
 import { BaseSession, InputProcessor, UTF8SplitterMiddleware } from 'tabby-terminal'
 import { SSHProfile } from '../api'
@@ -21,7 +21,7 @@ interface MoshServerPortConfig {
 
 export class SSHMoshSession extends BaseSession {
     bootstrapChannel?: russh.Channel
-    udpSocket?: DgramSocket
+    moshClient?: ChildProcessWithoutNullStreams
 
     private serviceMessage = new Subject<string>()
     private ssh: SSHSession|null
@@ -53,16 +53,10 @@ export class SSHMoshSession extends BaseSession {
         this.bootstrapData = await this.bootstrapMoshServer()
         this.remoteHost = await this.resolveRemoteHost()
         this.open = true
-        this.createUDPSocket()
+        this.spawnMoshClient()
     }
 
     private async resolveRemoteHost (): Promise<string> {
-        /**
-         * Mosh topology:
-         *  - SSH is used only for bootstrap (`mosh-server new`) and can be tunneled via a jump profile.
-         *  - After bootstrap, Mosh traffic is raw UDP and is not forwarded through the SSH tunnel.
-         * Therefore UDP must target the final destination host from the active profile, not the jump host.
-         */
         if (!this.profile.options.jumpHost) {
             return this.profile.options.host
         }
@@ -74,7 +68,7 @@ export class SSHMoshSession extends BaseSession {
             return this.profile.options.host
         }
 
-        this.emitServiceMessage(`Mosh settings: SSH bootstrap is tunneled via jump host ${jumpProfile.name ?? jumpProfile.options.host}, but UDP transport targets destination host ${this.profile.options.host}. Ensure direct UDP reachability from client to destination.`)
+        this.emitServiceMessage(`Mosh settings: SSH bootstrap is tunneled via jump host ${jumpProfile.name ?? jumpProfile.options?.host ?? this.profile.options.jumpHost}, but UDP transport targets destination host ${this.profile.options.host}. Ensure direct UDP reachability from client to destination.`)
         return this.profile.options.host
     }
 
@@ -209,37 +203,56 @@ export class SSHMoshSession extends BaseSession {
         }
     }
 
-    private createUDPSocket (): void {
+    private spawnMoshClient (): void {
         if (!this.bootstrapData) {
             throw new Error('Mosh bootstrap data missing')
         }
 
-        this.udpSocket = dgram.createSocket('udp4')
-        this.udpSocket.on('error', error => {
-            this.logger.error('UDP socket error', error)
-            this.emitServiceMessage('Mosh UDP transport error; this may indicate blocked UDP or unreachable host')
+        const args = [
+            this.remoteHost,
+            String(this.bootstrapData.port),
+        ]
+
+        this.moshClient = spawn('mosh-client', args, {
+            env: {
+                ...process.env,
+                MOSH_KEY: this.bootstrapData.key,
+                TERM: process.env.TERM || 'xterm-256color',
+            },
+            stdio: 'pipe',
+            windowsHide: true,
         })
-        this.udpSocket.on('message', message => this.emitOutput(message))
-        this.udpSocket.connect(this.bootstrapData.port, this.remoteHost, () => {
-            this.emitServiceMessage(`Connected UDP transport to ${this.remoteHost}:${this.bootstrapData!.port}`)
-            this.emitServiceMessage('SSH bootstrap succeeded; handing control over to Mosh UDP transport')
+
+        this.moshClient.stdout.on('data', data => this.emitOutput(data))
+        this.moshClient.stderr.on('data', data => this.emitServiceMessage(stripAnsi(data.toString('utf-8')).trim()))
+        this.moshClient.on('error', error => {
+            this.logger.error('mosh-client error', error)
+            this.emitServiceMessage('Unable to start mosh-client. Install Mosh locally and ensure mosh-client is in PATH.')
         })
+        this.moshClient.on('exit', (code, signal) => {
+            this.emitServiceMessage(`mosh-client exited${code !== null ? ` with code ${code}` : ''}${signal ? ` (${signal})` : ''}`)
+            this.destroy()
+        })
+
+        this.emitServiceMessage(`Connected mosh-client to ${this.remoteHost}:${this.bootstrapData.port} using encrypted Mosh protocol transport`)
+        this.emitServiceMessage('Mosh roaming/reconnect is handled by mosh-client; terminal may pause briefly during network changes')
     }
 
-    resize (columns: number, rows: number): void {
-        const payload = Buffer.from(`\\x1b[8;${rows};${columns}t`)
-        this.write(payload)
+
+    emitServiceMessage (msg: string): void {
+        this.serviceMessage.next(stripAnsi(msg))
+    }
+
+    resize (_columns: number, _rows: number): void {
+        this.emitServiceMessage('Mosh resize updates are managed by mosh-client terminal state tracking')
     }
 
     write (data: Buffer): void {
-        if (!this.udpSocket) {
-            return
-        }
-        this.udpSocket.send(data)
+        this.moshClient?.stdin.write(data)
     }
 
     kill (_signal?: string): void {
-        this.udpSocket?.close()
+        this.moshClient?.kill('SIGTERM')
         this.bootstrapChannel?.close()
     }
 
@@ -259,12 +272,7 @@ export class SSHMoshSession extends BaseSession {
         return !!this.reportedCWD
     }
 
-    async getWorkingDirectory (): Promise<string|null> {
-        return this.reportedCWD ?? null
-    }
-
-    private emitServiceMessage (msg: string): void {
-        this.serviceMessage.next(msg)
-        this.logger.info(stripAnsi(msg))
+    async getWorkingDirectory (): Promise<string | null> {
+        return this.reportedCWD || null
     }
 }

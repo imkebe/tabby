@@ -156,7 +156,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         }
     }
 
-    private async initializeSSHSessionMaybeMultiplex (multiplex = true): Promise<void> {
+    private async initializeSessionMaybeMultiplex (multiplex = true): Promise<void> {
         this.sshSession = await this.setupOneSession(this.injector, this.profile, multiplex)
         const session = new SSHShellSession(this.injector, this.sshSession, this.profile)
 
@@ -204,10 +204,10 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
                 }
             }
 
-            await this.initializeSSHSessionMaybeMultiplex(true)
+            await this.initializeSessionMaybeMultiplex(true)
         } catch {
             try {
-                await this.initializeSSHSessionMaybeMultiplex(false)
+                await this.initializeSessionMaybeMultiplex(false)
             } catch (e) {
                 console.error('SSH session initialization failed', e)
                 this.write(colors.black.bgRed(' X ') + ' ' + colors.red(e.message) + '\r\n')

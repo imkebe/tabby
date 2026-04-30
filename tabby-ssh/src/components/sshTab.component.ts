@@ -11,6 +11,7 @@ import { SSHPortForwardingModalComponent } from './sshPortForwardingModal.compon
 import { SSHProfile } from '../api'
 import { SSHShellSession } from '../session/shell'
 import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
+import { checkMoshClientAvailability } from '../session/mosh'
 
 /** @hidden */
 @Component({
@@ -71,9 +72,29 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     async setupOneSession (injector: Injector, profile: SSHProfile, multiplex = true): Promise<SSHSession> {
-        let session = await this.sshMultiplexer.getSession(profile)
-        if (!multiplex || !session || !profile.options.reuseSession) {
-            session = new SSHSession(injector, profile)
+        let effectiveProfile = profile
+        if (profile.options.transport === 'mosh') {
+            const moshAvailability = checkMoshClientAvailability(this.hostApp.platform)
+            if (!moshAvailability.available) {
+                if (profile.options.mosh.fallbackToSSH) {
+                    this.write('\r\n' + colors.black.bgWhite(' SSH ') + ` ${colors.yellow(moshAvailability.error!)}\r\n`)
+                    this.write('\r\n' + colors.black.bgWhite(' SSH ') + ' Falling back to standard SSH transport.\r\n')
+                    effectiveProfile = {
+                        ...profile,
+                        options: {
+                            ...profile.options,
+                            transport: 'ssh',
+                        },
+                    }
+                } else {
+                    throw new Error(moshAvailability.error)
+                }
+            }
+        }
+
+        let session = await this.sshMultiplexer.getSession(effectiveProfile)
+        if (!multiplex || !session || !effectiveProfile.options.reuseSession) {
+            session = new SSHSession(injector, effectiveProfile)
 
             if (profile.options.jumpHost) {
                 const jumpConnection = (await this.profilesService.getProfiles()).find(x => x.id === profile.options.jumpHost)

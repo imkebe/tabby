@@ -250,8 +250,11 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
     li(ngbNavItem)
         a(ngbNavLink, translate) Ports
         ng-template(ngbNavContent)
+            .form-text.text-warning.mb-2(*ngIf='!transportCapabilities.portForwarding', translate) Port forwarding controls are unavailable when using Mosh transport.
             ssh-port-forwarding-config(
                 *ngIf='profile.options.forwardedPorts',
+                [class.disabled]='!transportCapabilities.portForwarding',
+                [attr.aria-disabled]='!transportCapabilities.portForwarding',
                 [model]='profile.options.forwardedPorts',
                 (forwardAdded)='onForwardAdded($event)',
                 (forwardRemoved)='onForwardRemoved($event)'
@@ -263,8 +266,8 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
             .form-line(ng:if='hostApp.platform !== Platform.Web')
                 .header
                     .title(translate) X11 forwarding
-                    .description(*ngIf='connectionMode === "mosh"', translate) X11 forwarding is unavailable when using Mosh transport.
-                toggle([(ngModel)]='profile.options.x11', [disabled]='connectionMode === "mosh"')
+                    .description(*ngIf='!transportCapabilities.x11', translate) X11 forwarding is unavailable when using Mosh transport.
+                toggle([(ngModel)]='profile.options.x11', [disabled]='!transportCapabilities.x11')
 
             .form-line(ng:if='hostApp.platform !== Platform.Web')
                 .header
@@ -280,8 +283,9 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
             .form-line
                 .header
                     .title(translate) Reuse session for multiple tabs
-                    .description Multiplex multiple shells through the same connection
-                toggle([(ngModel)]='profile.options.reuseSession')
+                    .description(*ngIf='transportCapabilities.sessionReuse') Multiplex multiple shells through the same connection
+                    .description.text-warning(*ngIf='!transportCapabilities.sessionReuse', translate) Session reuse is unavailable when using Mosh transport.
+                toggle([(ngModel)]='profile.options.reuseSession', [disabled]='!transportCapabilities.sessionReuse')
 
             .form-line
                 .header

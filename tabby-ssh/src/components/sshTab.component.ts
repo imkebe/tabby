@@ -8,7 +8,7 @@ import { BaseTerminalTabComponent, ConnectableTerminalTabComponent } from 'tabby
 import { SSHService } from '../services/ssh.service'
 import { KeyboardInteractivePrompt, SSHSession } from '../session/ssh'
 import { SSHPortForwardingModalComponent } from './sshPortForwardingModal.component'
-import { SSHProfile } from '../api'
+import { SSHProfile, getSSHTransportCapabilities } from '../api'
 import { SSHShellSession } from '../session/shell'
 import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
 import { SSHMoshSession } from '../session/mosh'
@@ -45,8 +45,8 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         })
     }
 
-    private transportSupportsAuxiliarySSHFeatures (): boolean {
-        return this.profile.options.transport !== 'mosh'
+    get transportCapabilities () {
+        return getSSHTransportCapabilities(this.profile)
     }
 
     private showUnsupportedFeatureMessage (feature: string): void {
@@ -69,7 +69,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
                     this.reconnect()
                     break
                 case 'launch-winscp':
-                    if (!this.transportSupportsAuxiliarySSHFeatures()) {
+                    if (!this.transportCapabilities.winSCP) {
                         this.showUnsupportedFeatureMessage('WinSCP launch')
                         break
                     }
@@ -219,7 +219,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     showPortForwarding (): void {
-        if (!this.transportSupportsAuxiliarySSHFeatures()) {
+        if (!this.transportCapabilities.portForwarding) {
             this.showUnsupportedFeatureMessage('Port forwarding controls')
             return
         }
@@ -250,7 +250,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     async openSFTP (): Promise<void> {
-        if (!this.transportSupportsAuxiliarySSHFeatures()) {
+        if (!this.transportCapabilities.sftp) {
             this.showUnsupportedFeatureMessage('SFTP')
             return
         }
@@ -262,7 +262,7 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
     }
 
     get supportsSFTPAndPortForwarding (): boolean {
-        return this.transportSupportsAuxiliarySSHFeatures()
+        return this.transportCapabilities.sftp && this.transportCapabilities.portForwarding
     }
 
     @HostListener('click')

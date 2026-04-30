@@ -14,6 +14,11 @@ interface MoshBootstrapData {
     session: string
 }
 
+interface MoshServerPortConfig {
+    port: number|null
+    portRange: string|null
+}
+
 export class SSHMoshSession extends BaseSession {
     bootstrapChannel?: russh.Channel
     udpSocket?: DgramSocket
@@ -54,7 +59,11 @@ export class SSHMoshSession extends BaseSession {
     private async bootstrapMoshServer (): Promise<MoshBootstrapData> {
         const channel = await this.ssh!.openShellChannel({ x11: false })
         this.bootstrapChannel = channel
-        channel.write(new Uint8Array(Buffer.from('mosh-server new -s\n')) )
+        const command = this.buildBootstrapCommand()
+        if (!command) {
+            throw new Error('Invalid Mosh configuration')
+        }
+        channel.write(new Uint8Array(Buffer.from(`${command}\n`)) )
 
         const output = await new Promise<string>((resolve, reject) => {
             let acc = ''
@@ -86,6 +95,80 @@ export class SSHMoshSession extends BaseSession {
 
         this.emitServiceMessage(`Mosh bootstrap complete: session ${parsed.session}, UDP port ${parsed.port}`)
         return parsed
+    }
+
+    private buildBootstrapCommand (): string|null {
+        const options = this.profile.options.mosh
+        const serverCommand = options.serverCommand.trim() || 'mosh-server'
+        const args = [serverCommand, 'new', '-s']
+        const portArgs = this.resolvePortArguments({
+            port: options.port,
+            portRange: options.portRange,
+        })
+        if (!portArgs) {
+            return null
+        }
+        args.push(...portArgs)
+
+        if (this.commandSupportsPredictAndEscape(serverCommand)) {
+            if (options.predict) {
+                args.push(`--predict=${options.predict}`)
+            }
+            if (options.escapeKey.trim()) {
+                args.push(`--escape=${options.escapeKey.trim()}`)
+            }
+        }
+
+        return args.map(x => this.escapeShellArg(x)).join(' ')
+    }
+
+    private resolvePortArguments (config: MoshServerPortConfig): string[]|null {
+        const { port, portRange } = config
+        if (port !== null && portRange) {
+            this.emitServiceMessage('Mosh settings: both fixed port and port range are set; fixed port will be used.')
+        }
+
+        if (port !== null) {
+            if (!Number.isInteger(port) || port < 1 || port > 65535) {
+                this.emitServiceMessage(`Mosh settings: invalid fixed port "${port}". Port must be between 1 and 65535.`)
+                return null
+            }
+            return ['-p', String(port)]
+        }
+
+        if (!portRange) {
+            return []
+        }
+
+        const normalizedRange = this.normalizePortRange(portRange)
+        if (!normalizedRange) {
+            this.emitServiceMessage(`Mosh settings: invalid port range "${portRange}". Use "start:end" (for example "60000:61000").`)
+            return null
+        }
+        return ['-p', normalizedRange]
+    }
+
+    private normalizePortRange (portRange: string): string|null {
+        const trimmed = portRange.trim()
+        const match = /^(\d{1,5})\s*[:-]\s*(\d{1,5})$/.exec(trimmed)
+        if (!match) {
+            return null
+        }
+        const start = Number(match[1])
+        const end = Number(match[2])
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1 || start > 65535 || end > 65535 || start > end) {
+            return null
+        }
+        return `${start}:${end}`
+    }
+
+    private commandSupportsPredictAndEscape (command: string): boolean {
+        const normalized = command.trim()
+        return /^mosh(\s|$)/.test(normalized)
+    }
+
+    private escapeShellArg (value: string): string {
+        return `'${value.replace(/'/g, `'\\''`)}'`
     }
 
     private tryParseBootstrap (output: string): MoshBootstrapData|null {

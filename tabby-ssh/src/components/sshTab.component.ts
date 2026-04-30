@@ -168,9 +168,9 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         }
     }
 
-    private async initializeSessionMaybeMultiplex (multiplex = true): Promise<void> {
+    private async initializeSessionMaybeMultiplex (multiplex = true, forceShell = false): Promise<void> {
         this.sshSession = await this.setupOneSession(this.injector, this.profile, multiplex)
-        const session = this.profile.options.transport === 'mosh'
+        const session = this.profile.options.transport === 'mosh' && !forceShell
             ? new SSHMoshSession(this.injector, this.sshSession, this.profile)
             : new SSHShellSession(this.injector, this.sshSession, this.profile)
 
@@ -182,21 +182,38 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
         })
 
         await session.start()
-
         this.session?.resize(this.size.columns, this.size.rows)
     }
 
     async initializeSession (): Promise<void> {
         await super.initializeSession()
+
         try {
             await this.initializeSessionMaybeMultiplex(true)
-        } catch {
-            try {
-                await this.initializeSessionMaybeMultiplex(false)
-            } catch (e) {
-                console.error('SSH session initialization failed', e)
+        } catch (e) {
+            const isMoshStartupFailure = this.profile.options.transport === 'mosh' && this.sshSession?.open
+            if (isMoshStartupFailure) {
+                if (this.profile.options.mosh?.fallbackToSSH) {
+                    this.write(`\r${colors.black.bgWhite(' SSH ')} Mosh startup failed. Falling back to SSH shell session.\r\n`)
+                    try {
+                        await this.initializeSessionMaybeMultiplex(true, true)
+                    } catch (fallbackError) {
+                        console.error('SSH fallback initialization failed', fallbackError)
+                        this.write(colors.black.bgRed(' X ') + ' ' + colors.red(fallbackError.message) + '\r\n')
+                    }
+                    return
+                }
+
+                this.write(`\r${colors.black.bgWhite(' SSH ')} Mosh startup failed and fallback to SSH is disabled.\r\n`)
                 this.write(colors.black.bgRed(' X ') + ' ' + colors.red(e.message) + '\r\n')
                 return
+            }
+
+            try {
+                await this.initializeSessionMaybeMultiplex(false)
+            } catch (retryError) {
+                console.error('SSH session initialization failed', retryError)
+                this.write(colors.black.bgRed(' X ') + ' ' + colors.red(retryError.message) + '\r\n')
             }
         }
     }

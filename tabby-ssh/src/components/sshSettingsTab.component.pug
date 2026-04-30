@@ -19,7 +19,7 @@ h3 SSH
 .form-line(*ngIf='hostApp.platform === Platform.Windows')
     .header
         .title(translate) WinSCP path
-        .description(translate) When WinSCP is detected, you can launch an SCP session from the context menu.
+        .description(translate) When WinSCP is detected, you can launch an SCP session from the context menu for SSH transport sessions (not Mosh).
     input.form-control(
         type='text',
         placeholder='Auto-detect',

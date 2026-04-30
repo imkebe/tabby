@@ -72,7 +72,7 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
             .card.mb-3(*ngIf='connectionMode === "mosh"')
                 .card-body
                     h5.card-title Mosh
-                    p.text-muted.mb-3(translate) Mosh requires mosh-server on the remote host and open UDP firewall rules.
+                    p.text-muted.mb-3(translate) Mosh requires mosh-server on the remote host and open UDP firewall rules. SFTP, WinSCP integration, port forwarding controls, and X11 forwarding are only available in SSH transport mode.
                     .mb-3
                         label(translate) Mosh server command
                         input.form-control(
@@ -263,7 +263,8 @@ ul.nav-tabs(ngbNav, #nav='ngbNav')
             .form-line(ng:if='hostApp.platform !== Platform.Web')
                 .header
                     .title(translate) X11 forwarding
-                toggle([(ngModel)]='profile.options.x11')
+                    .description(*ngIf='connectionMode === "mosh"', translate) X11 forwarding is unavailable when using Mosh transport.
+                toggle([(ngModel)]='profile.options.x11', [disabled]='connectionMode === "mosh"')
 
             .form-line(ng:if='hostApp.platform !== Platform.Web')
                 .header

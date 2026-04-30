@@ -14,6 +14,11 @@ interface MoshBootstrapData {
     session: string
 }
 
+interface MoshBootstrapParseResult {
+    data: MoshBootstrapData|null
+    error?: string
+}
+
 interface MoshServerPortConfig {
     port: number|null
     portRange: string|null
@@ -73,7 +78,16 @@ export class SSHMoshSession extends BaseSession {
     }
 
     private async bootstrapMoshServer (): Promise<MoshBootstrapData> {
-        const channel = await this.ssh!.openShellChannel({ x11: false })
+        let channel: russh.Channel
+        try {
+            channel = await this.ssh!.openShellChannel({ x11: false })
+        } catch (error: any) {
+            const message = String(error?.message ?? error ?? '')
+            if (/host key|auth|authentication|permission denied|handshake/i.test(message)) {
+                throw error
+            }
+            throw new Error(`Unable to open SSH shell channel for Mosh bootstrap: ${message}`)
+        }
         this.bootstrapChannel = channel
         const command = this.buildBootstrapCommand()
         if (!command) {
@@ -83,12 +97,12 @@ export class SSHMoshSession extends BaseSession {
 
         const output = await new Promise<string>((resolve, reject) => {
             let acc = ''
-            const timer = setTimeout(() => reject(new Error('mosh bootstrap timed out')), 15000)
+            const timer = setTimeout(() => reject(new Error('Mosh bootstrap timed out after 15s while waiting for MOSH CONNECT/MOSH KEY tokens. Verify remote shell startup scripts and mosh-server availability.')), 15000)
 
             channel.data$.subscribe(data => {
                 acc += Buffer.from(data).toString('utf-8')
                 const parsed = this.tryParseBootstrap(acc)
-                if (parsed) {
+                if (parsed.data) {
                     clearTimeout(timer)
                     resolve(acc)
                 }
@@ -100,17 +114,17 @@ export class SSHMoshSession extends BaseSession {
 
             channel.eof$.subscribe(() => {
                 clearTimeout(timer)
-                reject(new Error('SSH channel closed during mosh bootstrap'))
+                reject(new Error('SSH channel closed before Mosh bootstrap tokens were received. Verify login shell startup scripts (MOTD/banner), remote command policy, and mosh-server execution permissions.'))
             })
         })
 
         const parsed = this.tryParseBootstrap(output)
-        if (!parsed) {
-            throw new Error('Unable to parse mosh-server bootstrap output')
+        if (!parsed.data) {
+            throw new Error(`Unable to parse mosh-server bootstrap output${parsed.error ? `: ${parsed.error}` : ''}`)
         }
 
-        this.emitServiceMessage(`Mosh bootstrap complete: session ${parsed.session}, UDP port ${parsed.port}`)
-        return parsed
+        this.emitServiceMessage(`Mosh bootstrap complete: session ${parsed.data.session}, UDP port ${parsed.data.port}`)
+        return parsed.data
     }
 
     private buildBootstrapCommand (): string|null {
@@ -187,20 +201,48 @@ export class SSHMoshSession extends BaseSession {
         return `'${value.replace(/'/g, `'\\''`)}'`
     }
 
-    private tryParseBootstrap (output: string): MoshBootstrapData|null {
-        const key = /MOSH KEY\s+([^\s\r\n]+)/.exec(output)?.[1]
-        const portRaw = /MOSH CONNECT\s+(\d+)/.exec(output)?.[1]
-        const session = /MOSH CONNECT\s+\d+\s+([^\s\r\n]+)/.exec(output)?.[1]
+    private tryParseBootstrap (output: string): MoshBootstrapParseResult {
+        const sanitized = stripAnsi(output)
+        let key: string|undefined
+        let portRaw: string|undefined
+        let session: string|undefined
 
-        if (!key || !portRaw || !session) {
-            return null
+        for (const line of sanitized.split(/\r?\n/)) {
+            const trimmed = line.trim()
+            if (!trimmed) {
+                continue
+            }
+            const connectMatch = /^MOSH CONNECT\s+(\d{1,5})\s+([A-Za-z0-9._~+\-=/]+)\s*$/.exec(trimmed)
+            if (connectMatch) {
+                portRaw = connectMatch[1]
+                session = connectMatch[2]
+                continue
+            }
+
+            const keyMatch = /^MOSH KEY\s+([A-Za-z0-9._~+\-=/]+)\s*$/.exec(trimmed)
+            if (keyMatch) {
+                key = keyMatch[1]
+            }
         }
 
-        return {
-            key,
-            port: Number(portRaw),
-            session,
+        if (!key && !portRaw && !session) {
+            return { data: null }
         }
+        if (!portRaw) {
+            return { data: null, error: 'missing MOSH CONNECT token' }
+        }
+        if (!session) {
+            return { data: null, error: 'missing session token in MOSH CONNECT line' }
+        }
+        if (!key) {
+            return { data: null, error: 'missing MOSH KEY token' }
+        }
+        const port = Number(portRaw)
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            return { data: null, error: `invalid MOSH CONNECT port "${portRaw}"` }
+        }
+
+        return { data: { key, port, session } }
     }
 
     private spawnMoshClient (): void {

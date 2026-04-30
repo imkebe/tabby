@@ -10,26 +10,30 @@ test('parses standard mosh-server bootstrap output', () => {
     const parse = parser()
     const parsed = parse('MOSH CONNECT 60001 abcdef1234\nMOSH KEY key123\n')
     assert.deepEqual(parsed, {
-        key: 'key123',
-        port: 60001,
-        session: 'abcdef1234',
+        data: {
+            key: 'key123',
+            port: 60001,
+            session: 'abcdef1234',
+        },
     })
 })
 
 test('parses bootstrap output with ANSI noise and extra lines', () => {
     const parse = parser()
-    const parsed = parse('\u001b[32mstarting\u001b[0m\nMOSH CONNECT 62000 sess-1\nnote\nMOSH KEY secret\n')
+    const parsed = parse('\u001b[32mWelcome\u001b[0m\nLast login: now\nMOTD\nMOSH CONNECT 62000 sess-1\nnote\nMOSH KEY secret\n')
     assert.deepEqual(parsed, {
-        key: 'secret',
-        port: 62000,
-        session: 'sess-1',
+        data: {
+            key: 'secret',
+            port: 62000,
+            session: 'sess-1',
+        },
     })
 })
 
-test('returns null when CONNECT or KEY lines are missing', () => {
+test('returns parse errors when CONNECT or KEY lines are missing', () => {
     const parse = parser()
-    assert.equal(parse('MOSH KEY only-key\n'), null)
-    assert.equal(parse('MOSH CONNECT 62000 sess-only\n'), null)
+    assert.deepEqual(parse('MOSH KEY only-key\n'), { data: null, error: 'missing MOSH CONNECT token' })
+    assert.deepEqual(parse('MOSH CONNECT 62000 sess-only\n'), { data: null, error: 'missing MOSH KEY token' })
 })
 
 function buildBootstrapCommandFor (mosh: any) {
@@ -120,8 +124,15 @@ test('resolves UDP endpoint to destination host when jump host is configured', a
 test('parses bootstrap with reconnect session token', () => {
     const parse = parser()
     const parsed = parse(`noise\nMOSH CONNECT 62001 session-token\nMOSH KEY AABBCC\n`)
-    assert.equal(parsed?.session, 'session-token')
-    assert.equal(parsed?.key, 'AABBCC')
+    assert.equal(parsed?.data?.session, 'session-token')
+    assert.equal(parsed?.data?.key, 'AABBCC')
+})
+
+test('rejects malformed bootstrap tokens', () => {
+    const parse = parser()
+    assert.deepEqual(parse('MOSH CONNECT port session\nMOSH KEY key\n'), { data: null })
+    assert.deepEqual(parse('MOSH CONNECT 99999 session\nMOSH KEY key\n'), { data: null, error: 'invalid MOSH CONNECT port "99999"' })
+    assert.deepEqual(parse('MOSH CONNECT 62001 \nMOSH KEY key\n'), { data: null })
 })
 
 test('builds mosh-client spawn config from bootstrap data', () => {

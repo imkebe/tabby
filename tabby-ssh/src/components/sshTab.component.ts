@@ -11,6 +11,7 @@ import { SSHPortForwardingModalComponent } from './sshPortForwardingModal.compon
 import { SSHProfile } from '../api'
 import { SSHShellSession } from '../session/shell'
 import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
+import { SSHMoshSession } from '../session/mosh'
 
 /** @hidden */
 @Component({
@@ -25,7 +26,7 @@ import { SSHMultiplexerService } from '../services/sshMultiplexer.service'
 export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile> {
     Platform = Platform
     sshSession: SSHSession|null = null
-    session: SSHShellSession|null = null
+    session: SSHShellSession|SSHMoshSession|null = null
     sftpPanelVisible = false
     sftpPath = '/'
     enableToolbar = true
@@ -157,7 +158,9 @@ export class SSHTabComponent extends ConnectableTerminalTabComponent<SSHProfile>
 
     private async initializeSessionMaybeMultiplex (multiplex = true): Promise<void> {
         this.sshSession = await this.setupOneSession(this.injector, this.profile, multiplex)
-        const session = new SSHShellSession(this.injector, this.sshSession, this.profile)
+        const session = this.profile.options.transport === 'mosh'
+            ? new SSHMoshSession(this.injector, this.sshSession, this.profile)
+            : new SSHShellSession(this.injector, this.sshSession, this.profile)
 
         this.setSession(session)
         this.attachSessionHandler(session.serviceMessage$, msg => {
